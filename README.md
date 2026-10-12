@@ -1,88 +1,104 @@
-# 📊 E-Commerce Web Analytics & Conversion Funnel Optimization
+# E-Commerce Web Analytics & Conversion Funnel Optimization (SQL)
 
-Komplexní SQL projekt zaměřený na relační modelování, datový audit a byznysovou analytiku webového provozu fiktivního e-shopu s plyšovými hračkami (*Fuzzy Factory*). Projekt pokrývá analýzu **472 871 návštěv**, **32 313 objednávek** a generovaných tržeb přes **1,9 mil. USD**.
-
----
-
-## 📌 Přehled projektu a cíle
-
-Hlavním cílem projektu bylo převzít surová transakční data a webové logy, zajistit jejich referenční integritu, odstranit analytické pasti (Simpsonův paradox, chybějící UTM parametry) a vybudovat strukturované SQL views pro strategické rozhodování vedení e-shopu:
-1. **Marketing Attribution:** Identifikace nejziskovějších akvizičních kanálů a odhalení výkonnostní propasti mezi desktopem a mobilem.
-2. **A/B Testing & UX Audit:** Vyhodnocení efektivity nových vstupních stránek (`/home` vs. `/lander-1`) a platebních bran (`/billing` vs. `/billing-2`).
-3. **Conversion Funnel Optimization:** Identifikace přesných míst v nákupním košíku, kde zákazníci nejvíce odpadávají.
-4. **Product Economics & Cross-Sell:** Analýza maržovosti jednotlivých produktů a měření úspěšnosti doporučování druhého kusu v košíku (Attach Rate).
+End-to-end data analytics projekt zaměřený na profilování, čištění, relační modelování a pokročilé analytické zpracování databáze e-commerce webového provozu (*Fuzzy Factory*). Projekt demonstruje transformaci surových webových a transakčních logů do produkčního relačního schématu a tvorbu analytických Views připravených pro reportingovou vrstvu v Power BI.
 
 ---
 
-## 🗄️ Datová architektura a integrita
-
-Dataset se skládá ze 6 provázaných relačních tabulek:
-* `website_sessions` – metadata o relaci (kanál, UTM parametry, typ zařízení, čas).
-* `website_pageviews` – log zobrazení jednotlivých URL adres v rámci návštěvy.
-* `orders` – dokončené nákupy navázané na session a uživatele.
-* `order_items` – jednotlivé položky v objednávce (rozlišení primárního a sekundárního kusu).
-* `order_item_refunds` – refundace a vrácené platby.
-* `products` – katalog produktů s uvedením základní ceny a nákladů (COGS).
-
-### Relační integrita a Data Quality Audit (`01_data_cleaning.sql`)
-Před spuštěním analytických dotazů proběhl kompletní audit datové kvality:
-* **Deduplikace:** Pomocí okenní funkce `ROW_NUMBER() OVER (PARTITION BY ...)` bylo ověřeno, že transakční tabulky neobsahují duplicitní zápisy (`rn > 1` = 0).
-* **Cizí klíče (Foreign Keys):** Schéma bylo provázáno pomocí `ALTER TABLE ... ADD FOREIGN KEY`, což garantuje referenční integritu (nemožnost existence sirotčích záznamů) a vytváří indexy pro optimalizaci rychlosti `JOIN` operací.
-* **Správná interpretace `NULL` hodnot v UTM:** `NULL` hodnoty ve sloupcích `utm_source`, `utm_campaign` a `utm_content` nebyly chybou měření, ale reprezentují přirozenou návštěvnost. Zachování těchto řádků umožnilo přesnou segmentaci na:
-  * **Organické vyhledávání (SEO):** UTM jsou `NULL`, ale `http_referer` odkazuje na vyhledávač (43 411 návštěv).
-  * **Přímá návštěvnost (Direct):** Všechny parametry jsou `NULL`, zákazník zadal URL ručně (39 917 návštěv).
+## Použité technologie & Zdroj dat
+- **Databázový systém:** MySQL (CTEs, okenní funkce `ROW_NUMBER()`, podmíněná agregace `MAX(CASE WHEN...)`, DDL/DML operace, explicitní cizí klíče `FOREIGN KEY`, analytická Views).
+- **Vývojové prostředí:** MySQL / DBeaver / VS Code.
+- **Zdroj dat:** [Toy Store E-Commerce Database](https://mavenanalytics.io/data-playground/toy-store-e-commerce-database) (472 871 návštěv, 32 313 objednávek).
 
 ---
 
-## 🔍 Klíčová analytická zjištění
+## Struktura repozitáře
+- `01_data_cleaning.sql` – profilování dat, ošetření `NULL` a prázdných řetězců, validace finančních rozsahů, deduplikace přes `ROW_NUMBER()` a tvorba cizích klíčů (`FOREIGN KEY`).
+- `02_analytical_views.sql` – sada produkčních analytických SQL pohledů (Views) řešících atribuci kanálů, bounce rate, nákupní trychtýř, produktové marže a cross-sell.
+- `README.md` – technická, metodická a byznysová dokumentace projektu.
+- *(Plánováno)* `reports/` – soubor `.pbix` a interaktivní vizualizace z Power BI.
 
-### 1. Akviziční kanály a propast mezi zařízeními
-* **Google (`gsearch`)** je primárním tahounem tržeb (1,27 mil. USD, konverze **6,75 %**).
-* **Organická/přímá návštěvnost** má nejvyšší konverzi (**7,34 %**), což potvrzuje vysokou lojalitu vracejících se zákazníků.
-* **Sociální sítě (`socialbook`)** vykazují podprůměrnou konverzi (**3,21 %**) a představují neefektivně alokovaný rozpočet.
-* **Propast v zařízeních:** Desktop dosahuje konverzního poměru **8,50 %**, zatímco mobilní zařízení pouze **3,09 %**. Mobilní verze webu vyžaduje kompletní přepracování UX.
+---
 
-### 2. A/B Test Landing Page a Simpsonův paradox
-Při plošném pohledu na celý web vykazoval starý `/home` konverzi 7,06 % a nový `/lander-1` zdánlivě slabších 4,53 %. 
+## Datová architektura & Model
 
-Při očištění dat o kontext (izolace placené kampaně `gsearch nonbrand` v testovacím období) se ukázalo, že:
-* `/home` konvertoval pouze na **3,22 %**.
-* `/lander-1` dosáhl konverze **4,41 %**.
-* **Výsledek:** Nový lander zvedl prodeje o **+37 %** na studené návštěvnosti. Plošné číslo bylo zkresleno tím, že na `/home` přicházeli i věrní a přímí zákazníci.
+Data pokrývají 6 vzájemně provázaných entit:
+- **Zdrojové tabulky:** `website_sessions`, `website_pageviews`, `orders`, `order_items`, `order_item_refunds`, `products`.
+- **Čištění dat & Integrita (`01_data_cleaning.sql`):**
+  - Validace chybějících hodnot a finančních rozsahů (`MIN`/`MAX` check, `refund_amount_usd <= 0`).
+  - Deduplikace transakčních záznamů pomocí okenní funkce `ROW_NUMBER() OVER (PARTITION BY ...)`.
+  - Zajištění referenční integrity pomocí explicitních cizích klíčů (`FOREIGN KEY`).
+  - Správná interpretace `NULL` hodnot v UTM parametrech jako přirozené organické a přímé návštěvnosti (SEO / Direct).
+- **Analytická Views (`02_analytical_views.sql`):**
+  - `vw_channel_performance`: Sledování návštěvnosti, konverzí, tržeb a zisku podle zdroje a zařízení (`desktop` vs. `mobile`).
+  - `vw_landing_page_bounce_rates`: Výpočet míry okamžitého opuštění (Bounce Rate) pro jednotlivé vstupní stránky.
+  - `vw_conversion_funnel`: Kompletní nákupní trychtýř a identifikace propadů (Drop-off) mezi jednotlivými fázemi webu.
+  - `vw_product_yearly_performance`: Vývoj tržeb, COGS, hrubé marže a dynamický meziroční žebříček ziskovosti produktů (`ROW_NUMBER()`).
+  - `vw_cross_sell_performance`: Úspěšnost doporučování doplňkového zboží v košíku a podíl sekundárních položek.
 
-### 3. Konverzní trychtýř (Funnel Bottlenecks)
+---
 
-Z celkového počtu 472 871 návštěv dokončilo nákup 32 313 lidí (celková konverze **6,83 %**).
+## 🔍 Příklad zjištění: Úzká hrdla konverzního trychtýře (Funnel Bottlenecks)
 
-| Krok trychtýře | Unikátní relace | Průchodnost krokem | Ztráta (Drop-off) |
+Analýzou průchodnosti návštěvníků nákupním procesem (472 871 relací) byly pomocí techniky podmíněné agregace `MAX(CASE WHEN...)` lokalizovány dva zásadní propady:
+- **Kritický bod 1 (Detail produktu ➔ Košík):** Ze zákazníků, kteří si prohlédnou detail plyšáka (210 214 relací), jich do košíku vloží zboží pouze 45,17 %. Více než **54,83 % zájemců v této fázi web opouští**. Zde vzniká hlavní prostor pro A/B testování sociálních důkazů (recenze) a úpravy CTA tlačítek.
+- **Kritický bod 2 (Platební brána ➔ Dokončení):** Téměř **37,93 % uživatelů**, kteří již vyplnili doručovací adresu a pokračovali k platbě, transakci nedokončí. Tento vysoký propad přímo inicioval vývoj a A/B testování optimalizované pokladny `/billing-2`.
+
+### Výsledná data nákupního trychtýře:
+
+| Krok trychtýře | Počet relací | Mezikroková průchodnost | Ztráta (Drop-off) |
 | :--- | :--- | :--- | :--- |
-| 1. Vstup na web | 472 871 | — | — |
-| 2. Katalog produktů (`/products`) | 261 231 | 55,24 % | -44,76 % |
-| 3. Detail produktu (konkrétní hračka) | 210 214 | 80,47 % | -19,53 % |
-| 4. Vložení do košíku (`/cart`) | 94 953 | **45,17 %** | **-54,83 % (Úzké hrdlo 1)** |
-| 5. Volba dopravy (`/shipping`) | 64 484 | 67,91 % | -32,09 % |
-| 6. Platební brána (`/billing`) | 52 058 | 80,73 % | -19,27 % |
-| 7. Dokončený nákup (`/thank-you`) | 32 313 | **62,07 %** | **-37,93 % (Úzké hrdlo 2)** |
+| **1. Vstup na web** | 472 871 | — | — |
+| **2. Katalog produktů** (`/products`) | 261 231 | 55,24 % | -44,76 % |
+| **3. Detail plyšáka** (konkrétní produkt) | 210 214 | 80,47 % | -19,53 % |
+| **4. Vložení do košíku** (`/cart`) | 94 953 | **45,17 %** *(Kritický bod 1)* | **-54,83 %** |
+| **5. Způsob dopravy** (`/shipping`) | 64 484 | 67,91 % | -32,09 % |
+| **6. Platební brána** (`/billing` & `/billing-2`) | 52 058 | 80,73 % | -19,27 % |
+| **7. Dokončený nákup** (`/thank-you`) | 32 313 | **62,07 %** *(Kritický bod 2)* | **-37,93 %** |
+| **Celková konverze webu (End-to-End)** | **32 313** | **6,83 %** | — |
 
-* **Kritický bod 1 (Produkt $\rightarrow$ Košík):** Více než polovina zájemců (54,83 %) opouští detail produktu bez nákupního záměru. Doporučuje se zavést sociální důkazy (hvězdičky, recenze) a zvýraznit garanci vrácení peněz.
-* **Kritický bod 2 (Pokladna $\rightarrow$ Zaplacení):** Téměř 38 % uživatelů, kteří již vyplnili doručovací adresu, nedokončilo platbu. Tento problém vyřešilo nasazení redesignované pokladny `/billing-2`.
-
-### 4. Produktová ekonomika a Cross-Sell (Attach Rate)
-* Postupné rozšiřování portfolia z jednoho produktu (*Mr. Fuzzy*) na 4 plyšáky stabilizovalo marži e-shopu na **62–64 %**.
-* Zavedení doporučení druhého kusu v košíku vytvořilo nový zdroj příjmů bez dodatečných akvizičních nákladů. Podíl objednávek s doplňkovým produktem (**Attach Rate**) dosáhl stabilních dvouciferných hodnot, což zásadním způsobem navýšilo průměrnou hodnotu objednávky (AOV).
-
----
-
-## 🛠️ Použité SQL techniky
-* **Common Table Expressions (CTE):** Logické rozdělení vícekrokových výpočtů pro zachování čitelnosti kódu.
-* **Podmíněná agregace (`MAX(CASE WHEN ...)`):** Agregace webových logů na úroveň jednotlivých session ID pro sestavení trychtýře.
-* **Okenní funkce (`ROW_NUMBER()`):** Deduplikace dat a dynamický ranking ziskovosti produktů v čase.
-* **Databázové pohledy (`CREATE VIEW`):** Příprava datových struktur pro přímé napojení do BI nástrojů (Power BI / Tableau).
-
----
-
-## 📁 Struktura repozitáře
-```text
-├── 01_data_cleaning.sql        # Audit dat, deduplikace, vazby cizích klíčů
-├── 02_analytics_views.sql       # Produkční analytické pohledy a metriky
-└── README.md                   # Manažerské shrnutí a dokumentace projektu
+### SQL dotaz pro výpočet konverzního trychtýře:
+```sql
+WITH page_visits_flags AS (
+    SELECT 
+        website_session_id,
+        MAX(CASE WHEN pageview_url = '/products' THEN 1 ELSE 0 END) AS saw_products,
+        MAX(CASE WHEN pageview_url IN (
+            '/the-original-mr-fuzzy',
+            '/the-forever-love-bear',
+            '/the-birthday-sugar-panda',
+            '/the-hudson-river-mini-bear'
+        ) THEN 1 ELSE 0 END) AS saw_product_detail,
+        MAX(CASE WHEN pageview_url = '/cart' THEN 1 ELSE 0 END)     AS saw_cart,
+        MAX(CASE WHEN pageview_url = '/shipping' THEN 1 ELSE 0 END) AS saw_shipping,
+        MAX(CASE WHEN pageview_url IN ('/billing', '/billing-2') THEN 1 ELSE 0 END) AS saw_billing,
+        MAX(CASE WHEN pageview_url = '/thank-you-for-your-order' THEN 1 ELSE 0 END) AS saw_thank_you
+    FROM website_pageviews
+    GROUP BY website_session_id
+),
+funnel_aggregates AS (
+    SELECT 
+        COUNT(website_session_id) AS total_sessions,
+        SUM(saw_products)         AS step_products,
+        SUM(saw_product_detail)   AS step_product_detail,
+        SUM(saw_cart)             AS step_cart,
+        SUM(saw_shipping)         AS step_shipping,
+        SUM(saw_billing)          AS step_billing,
+        SUM(saw_thank_you)        AS step_thank_you
+    FROM page_visits_flags
+)
+SELECT 
+    total_sessions,
+    step_products,
+    ROUND(100.0 * step_products / total_sessions, 2)          AS session_to_products_pct,
+    step_product_detail,
+    ROUND(100.0 * step_product_detail / step_products, 2)      AS products_to_detail_pct,
+    step_cart,
+    ROUND(100.0 * step_cart / step_product_detail, 2)          AS detail_to_cart_pct,
+    step_shipping,
+    ROUND(100.0 * step_shipping / step_cart, 2)                AS cart_to_shipping_pct,
+    step_billing,
+    ROUND(100.0 * step_billing / step_shipping, 2)             AS shipping_to_billing_pct,
+    step_thank_you,
+    ROUND(100.0 * step_thank_you / step_billing, 2)            AS billing_to_thank_you_pct,
+    ROUND(100.0 * step_thank_you / total_sessions, 2)          AS overall_conversion_pct
+FROM funnel_aggregates;
